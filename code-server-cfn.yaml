@@ -8,6 +8,8 @@ Parameters:
   AmiId:
     Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
     Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
+  CodeServerPassword:
+    Type: String
 
 Resources:
   CodeServerSecurityGroup:
@@ -32,7 +34,8 @@ Resources:
       SecurityGroupIds:
         - !Ref CodeServerSecurityGroup
       UserData:
-        Fn::Base64: |
+        Fn::Base64:
+          !Sub |
           #!/bin/bash
           set -euxo pipefail
 
@@ -41,12 +44,12 @@ Resources:
           export HOME=/root
 
           CODE_SERVER_USER="ec2-user"
-          CODE_SERVER_PASSWORD="1qw3E3rr3453fd%34rr343"
+          CODE_SERVER_PASSWORD="${CodeServerPassword}"
           CODE_SERVER_PORT="8080"
           PROJECT_DIR="/home/ec2-user/terraform"
-          SERVICE_DIR="/etc/systemd/system/code-server@${CODE_SERVER_USER}.service.d"
-          OVERRIDE_FILE="${SERVICE_DIR}/override.conf"
-          STORAGE_FILE="$CODE_SERVER_USER/.local/share/code-server/User/globalStorage/storage.json"
+          SERVICE_DIR="/etc/systemd/system/code-server@${!CODE_SERVER_USER}.service.d"
+          OVERRIDE_FILE="${!SERVICE_DIR}/override.conf"
+          STORAGE_FILE="/home/${!CODE_SERVER_USER}/.local/share/code-server/User/globalStorage/storage.json"
 
 
           dnf update -y
@@ -55,23 +58,45 @@ Resources:
           chmod +x /tmp/code-server-install.sh
           /bin/sh /tmp/code-server-install.sh
 
-          install -d -m 700 -o "${CODE_SERVER_USER}" -g "${CODE_SERVER_USER}" "/home/${CODE_SERVER_USER}/.config/code-server"
+          install -d -m 700 -o "${!CODE_SERVER_USER}" -g "${!CODE_SERVER_USER}" "/home/${!CODE_SERVER_USER}/.config/code-server"
 
-          cat > "/home/${CODE_SERVER_USER}/.config/code-server/config.yaml" <<EOF
-          bind-addr: 0.0.0.0:${CODE_SERVER_PORT}
+          cat > "/home/${!CODE_SERVER_USER}/.config/code-server/config.yaml" <<EOF
+          bind-addr: 0.0.0.0:${!CODE_SERVER_PORT}
           auth: password
-          password: ${CODE_SERVER_PASSWORD}
+          password: ${!CODE_SERVER_PASSWORD}
           cert: false
           EOF
 
-          chown "${CODE_SERVER_USER}:${CODE_SERVER_USER}" "/home/${CODE_SERVER_USER}/.config/code-server/config.yaml"
-          chmod 600 "/home/${CODE_SERVER_USER}/.config/code-server/config.yaml"
+          chown "${!CODE_SERVER_USER}:${!CODE_SERVER_USER}" "/home/${!CODE_SERVER_USER}/.config/code-server/config.yaml"
+          chmod 600 "/home/${!CODE_SERVER_USER}/.config/code-server/config.yaml"
+          
+          mkdir -p /home/${!CODE_SERVER_USER}/.local/share/code-server/User
 
-          systemctl enable --now "code-server@${CODE_SERVER_USER}"
+          cat > "/home/${!CODE_SERVER_USER}/.local/share/code-server/User/settings.json" <<EOF
+          {
+            "files.exclude": {
+              "**/.git": true,
+              "**/.github": true,
+              "**/.terraform": true,
+              "**/.cache": true,
+              "**/.local": true,
+              "**/.ssh": true,
+              "**/.cache": true,
+              "**/.config": true,
+              "**/.bash_logout": true,
+              "**/.bash_profile": true,
+              "**/.bashrc": true
+            }
+          }
+          EOF
+          
+          chown "${!CODE_SERVER_USER}:${!CODE_SERVER_USER}" "/home/${!CODE_SERVER_USER}/.local/share/code-server/User/settings.json"
+          chmod 600 "/home/${!CODE_SERVER_USER}/.local/share/code-server/User/settings.json"
+          systemctl enable --now "code-server@${!CODE_SERVER_USER}"
 
 
           echo "==== code-server status ===="
-          systemctl --no-pager --full status "code-server@${CODE_SERVER_USER}" || true
+          systemctl --no-pager --full status "code-server@${!CODE_SERVER_USER}" || true
 
 
           echo "==== listening ports ===="
@@ -86,19 +111,19 @@ Resources:
           sudo dnf install git -y
 
           echo "==== install IDE extensions ==="
-          sudo -u ${CODE_SERVER_USER} code-server --install-extension amazonwebservices.aws-toolkit-vscode
-          sudo -u ${CODE_SERVER_USER} code-server --install-extension hashicorp.terraform
+          sudo systemctl restart code-server@${!CODE_SERVER_USER}
+          install -d -m 755 -o ${!CODE_SERVER_USER} -g ${!CODE_SERVER_USER} /home/${!CODE_SERVER_USER}/.local
+          install -d -m 755 -o ${!CODE_SERVER_USER} -g ${!CODE_SERVER_USER} /home/${!CODE_SERVER_USER}/.local/share
+          install -d -m 755 -o ${!CODE_SERVER_USER} -g ${!CODE_SERVER_USER} /home/${!CODE_SERVER_USER}/.local/share/code-server
+          sudo -u ${!CODE_SERVER_USER} code-server --install-extension amazonwebservices.aws-toolkit-vscode
+          sudo -u ${!CODE_SERVER_USER} code-server --install-extension hashicorp.terraform
 
           # Create directory if it doesn't exist
-          sudo mkdir -p "$SERVICE_DIR"
-                 
-
-
-          
+          sudo mkdir -p "${!SERVICE_DIR}"
 
           echo "=====Reload systemd and restart service====="
           sudo systemctl daemon-reload
-          sudo systemctl restart code-server@${CODE_SERVER_USER}
+          sudo systemctl restart code-server@${!CODE_SERVER_USER}
 
           echo "code-server now starts in: $PROJECT_DIR"
 
