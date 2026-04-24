@@ -1,0 +1,138 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: EC2 instance running code-server on port 8080
+
+Parameters:
+  InstanceType:
+    Type: String
+    Default: t3.medium
+  AmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
+
+Resources:
+  CodeServerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow SSH and code-server access
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          CidrIp: 0.0.0.0/0
+
+  CodeServerInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref InstanceType
+      ImageId: !Ref AmiId
+      SecurityGroupIds:
+        - !Ref CodeServerSecurityGroup
+      UserData:
+        Fn::Base64: |
+          #!/bin/bash
+          set -euxo pipefail
+
+          exec > >(tee /var/log/user-data.log | logger -t user-data -s 2>/dev/console) 2>&1
+
+          export HOME=/root
+
+          CODE_SERVER_USER="ec2-user"
+          CODE_SERVER_PASSWORD="1qw3E3rr3453fd%34rr343"
+          CODE_SERVER_PORT="8080"
+          PROJECT_DIR="/home/ec2-user/terraform"
+          SERVICE_DIR="/etc/systemd/system/code-server@${CODE_SERVER_USER}.service.d"
+          OVERRIDE_FILE="${SERVICE_DIR}/override.conf"
+          STORAGE_FILE="$CODE_SERVER_USER/.local/share/code-server/User/globalStorage/storage.json"
+
+
+          dnf update -y
+
+          curl -fsSL https://code-server.dev/install.sh -o /tmp/code-server-install.sh
+          chmod +x /tmp/code-server-install.sh
+          /bin/sh /tmp/code-server-install.sh
+
+          install -d -m 700 -o "${CODE_SERVER_USER}" -g "${CODE_SERVER_USER}" "/home/${CODE_SERVER_USER}/.config/code-server"
+
+          cat > "/home/${CODE_SERVER_USER}/.config/code-server/config.yaml" <<EOF
+          bind-addr: 0.0.0.0:${CODE_SERVER_PORT}
+          auth: password
+          password: ${CODE_SERVER_PASSWORD}
+          cert: false
+          EOF
+
+          chown "${CODE_SERVER_USER}:${CODE_SERVER_USER}" "/home/${CODE_SERVER_USER}/.config/code-server/config.yaml"
+          chmod 600 "/home/${CODE_SERVER_USER}/.config/code-server/config.yaml"
+
+          systemctl enable --now "code-server@${CODE_SERVER_USER}"
+
+
+          echo "==== code-server status ===="
+          systemctl --no-pager --full status "code-server@${CODE_SERVER_USER}" || true
+
+
+          echo "==== listening ports ===="
+          ss -ltnp || true
+
+
+          echo "==== local tests ===="
+          curl -I http://127.0.0.1:8080 || true
+          curl -I http://127.0.0.1 || true
+
+          echo "====== install git ====="
+          sudo dnf install git -y
+
+          echo "==== install IDE extensions ==="
+          sudo -u ${CODE_SERVER_USER} code-server --install-extension amazonwebservices.aws-toolkit-vscode
+          sudo -u ${CODE_SERVER_USER} code-server --install-extension hashicorp.terraform
+
+          # Create directory if it doesn't exist
+          sudo mkdir -p "$SERVICE_DIR"
+                 
+
+
+          
+
+          echo "=====Reload systemd and restart service====="
+          sudo systemctl daemon-reload
+          sudo systemctl restart code-server@${CODE_SERVER_USER}
+
+          echo "code-server now starts in: $PROJECT_DIR"
+
+      Tags:
+        - Key: Name
+          Value: code-server
+
+  CodeServerDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        PriceClass: PriceClass_100
+        Origins:
+          - Id: CodeServerOrigin
+            DomainName: !GetAtt CodeServerInstance.PublicDnsName
+            CustomOriginConfig:
+              HTTPPort: 8080
+              OriginProtocolPolicy: http-only
+        DefaultCacheBehavior:
+          TargetOriginId: CodeServerOrigin
+          ViewerProtocolPolicy: redirect-to-https
+          CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+          OriginRequestPolicyId: 216adef6-5c7f-47e4-b989-5492eafa07d3
+          AllowedMethods: [DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT]
+          CachedMethods: [GET, HEAD]
+
+Outputs:
+  PublicIP:
+    Value: !GetAtt CodeServerInstance.PublicIp
+    Description: Public IP of the code-server instance
+  CodeServerURL:
+    Value: !Sub "http://${CodeServerInstance.PublicIp}:8080"
+    Description: URL to access code-server
+  CloudFrontURL:
+    Value: !Sub "https://${CodeServerDistribution.DomainName}"
+    Description: CloudFront HTTPS URL for code-server
