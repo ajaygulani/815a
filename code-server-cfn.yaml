@@ -2,6 +2,8 @@ AWSTemplateFormatVersion: "2010-09-09"
 Description: EC2 instance running code-server on port 8080
 
 Parameters:
+  UserName:
+    Type: String
   InstanceType:
     Type: String
     Default: t3.medium
@@ -44,7 +46,7 @@ Resources:
           export HOME=/root
 
           CODE_SERVER_USER="ec2-user"
-          CODE_SERVER_PASSWORD="${CodeServerPassword}"
+          CODE_SERVER_PASSWORD="${CodeServerPassword}
           CODE_SERVER_PORT="8080"
           PROJECT_DIR="/home/ec2-user/terraform"
           SERVICE_DIR="/etc/systemd/system/code-server@${!CODE_SERVER_USER}.service.d"
@@ -129,7 +131,7 @@ Resources:
 
       Tags:
         - Key: Name
-          Value: code-server
+          Value: !Sub "${UserName}-Code-Server"
 
   CodeServerDistribution:
     Type: AWS::CloudFront::Distribution
@@ -152,12 +154,6 @@ Resources:
           CachedMethods: [GET, HEAD]
 
 Outputs:
-  PublicIP:
-    Value: !GetAtt CodeServerInstance.PublicIp
-    Description: Public IP of the code-server instance
-  CodeServerURL:
-    Value: !Sub "http://${CodeServerInstance.PublicIp}:8080"
-    Description: URL to access code-server
   CloudFrontURL:
     Value: !Sub "https://${CodeServerDistribution.DomainName}"
     Description: CloudFront HTTPS URL for code-server
