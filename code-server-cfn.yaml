@@ -129,7 +129,7 @@ Resources:
 
       Tags:
         - Key: Name
-          Value: code-server
+          Value: !Sub "${AWS::StackName}-code-server"
 
   CodeServerDistribution:
     Type: AWS::CloudFront::Distribution
