@@ -30,6 +30,7 @@ Resources:
     Type: AWS::EC2::Instance
     Properties:
       InstanceType: !Ref InstanceType
+      IamInstanceProfile: EC2TerraformProfile
       ImageId: !Ref AmiId
       SecurityGroupIds:
         - !Ref CodeServerSecurityGroup
