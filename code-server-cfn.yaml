@@ -12,6 +12,8 @@ Parameters:
     Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
   CodeServerPassword:
     Type: String
+    NoEcho: true
+    AllowedPattern: "^[\\w!@#$%^&*()]{8,}$"
 
 Resources:
   CodeServerSecurityGroup:
@@ -61,7 +63,7 @@ Resources:
             install -d -m 700 -o $CODE_SERVER_USER -g $CODE_SERVER_USER /home/$CODE_SERVER_USER/.config/code-server
 
             printf 'bind-addr: 0.0.0.0:%s\nauth: password\npassword: %s\ncert: false\n' \
-              $CODE_SERVER_PORT $CODE_SERVER_PASSWORD \
+              $CODE_SERVER_PORT "$CODE_SERVER_PASSWORD" \
               > /home/$CODE_SERVER_USER/.config/code-server/config.yaml
 
             chown $CODE_SERVER_USER:$CODE_SERVER_USER /home/$CODE_SERVER_USER/.config/code-server/config.yaml
