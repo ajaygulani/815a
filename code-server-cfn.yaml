@@ -38,7 +38,7 @@ Resources:
       IamInstanceProfile: EC2TerraformProfile
       UserData:
         Fn::Base64:
-          !Sub |
+          Fn::Sub: |
             #!/bin/bash
             set -euxo pipefail
 
@@ -46,12 +46,11 @@ Resources:
 
             export HOME=/root
 
-            CODE_SERVER_USER="ec2-user"
-            CODE_SERVER_PASSWORD="${CodeServerPassword}"
-            CODE_SERVER_PORT="8080"
-            PROJECT_DIR="/home/ec2-user/terraform"
-            SERVICE_DIR="/etc/systemd/system/code-server@$CODE_SERVER_USER.service.d"
-            STORAGE_FILE="/home/$CODE_SERVER_USER/.local/share/code-server/User/globalStorage/storage.json"
+            CODE_SERVER_USER=ec2-user
+            CODE_SERVER_PASSWORD=${CodeServerPassword}
+            CODE_SERVER_PORT=8080
+            PROJECT_DIR=/home/ec2-user/terraform
+            SERVICE_DIR=/etc/systemd/system/code-server@$CODE_SERVER_USER.service.d
 
             dnf update -y
 
@@ -59,18 +58,19 @@ Resources:
             chmod +x /tmp/code-server-install.sh
             /bin/sh /tmp/code-server-install.sh
 
-            install -d -m 700 -o "$CODE_SERVER_USER" -g "$CODE_SERVER_USER" "/home/$CODE_SERVER_USER/.config/code-server"
+            install -d -m 700 -o $CODE_SERVER_USER -g $CODE_SERVER_USER /home/$CODE_SERVER_USER/.config/code-server
 
             printf 'bind-addr: 0.0.0.0:%s\nauth: password\npassword: %s\ncert: false\n' \
-              "$CODE_SERVER_PORT" "$CODE_SERVER_PASSWORD" \
-              > "/home/$CODE_SERVER_USER/.config/code-server/config.yaml"
+              $CODE_SERVER_PORT $CODE_SERVER_PASSWORD \
+              > /home/$CODE_SERVER_USER/.config/code-server/config.yaml
 
-            chown "$CODE_SERVER_USER:$CODE_SERVER_USER" "/home/$CODE_SERVER_USER/.config/code-server/config.yaml"
-            chmod 600 "/home/$CODE_SERVER_USER/.config/code-server/config.yaml"
+            chown $CODE_SERVER_USER:$CODE_SERVER_USER /home/$CODE_SERVER_USER/.config/code-server/config.yaml
+            chmod 600 /home/$CODE_SERVER_USER/.config/code-server/config.yaml
 
             mkdir -p /home/$CODE_SERVER_USER/.local/share/code-server/User
 
-            printf '{
+            cat > /home/$CODE_SERVER_USER/.local/share/code-server/User/settings.json << 'SETTINGS'
+            {
               "files.exclude": {
                 "**/.git": true,
                 "**/.github": true,
@@ -84,39 +84,27 @@ Resources:
                 "**/.bashrc": true
               }
             }
-            ' > "/home/$CODE_SERVER_USER/.local/share/code-server/User/settings.json"
+            SETTINGS
 
-            chown "$CODE_SERVER_USER:$CODE_SERVER_USER" "/home/$CODE_SERVER_USER/.local/share/code-server/User/settings.json"
-            chmod 600 "/home/$CODE_SERVER_USER/.local/share/code-server/User/settings.json"
+            chown $CODE_SERVER_USER:$CODE_SERVER_USER /home/$CODE_SERVER_USER/.local/share/code-server/User/settings.json
+            chmod 600 /home/$CODE_SERVER_USER/.local/share/code-server/User/settings.json
 
-            systemctl enable --now "code-server@$CODE_SERVER_USER"
+            systemctl enable --now code-server@$CODE_SERVER_USER
 
-            echo "==== code-server status ===="
-            systemctl --no-pager --full status "code-server@$CODE_SERVER_USER" || true
-
-            echo "==== listening ports ===="
             ss -ltnp || true
-
-            echo "==== local tests ===="
             curl -I http://127.0.0.1:8080 || true
 
-            echo "====== install git ====="
             dnf install git -y
 
-            echo "==== install IDE extensions ==="
             install -d -m 755 -o $CODE_SERVER_USER -g $CODE_SERVER_USER /home/$CODE_SERVER_USER/.local
             install -d -m 755 -o $CODE_SERVER_USER -g $CODE_SERVER_USER /home/$CODE_SERVER_USER/.local/share
             install -d -m 755 -o $CODE_SERVER_USER -g $CODE_SERVER_USER /home/$CODE_SERVER_USER/.local/share/code-server
             sudo -u $CODE_SERVER_USER code-server --install-extension amazonwebservices.aws-toolkit-vscode
             sudo -u $CODE_SERVER_USER code-server --install-extension hashicorp.terraform
 
-            sudo mkdir -p "$SERVICE_DIR"
-
-            echo "=====Reload systemd and restart service====="
+            mkdir -p $SERVICE_DIR
             systemctl daemon-reload
             systemctl restart code-server@$CODE_SERVER_USER
-
-            echo "code-server now starts in: $PROJECT_DIR"
 
       Tags:
         - Key: Name
