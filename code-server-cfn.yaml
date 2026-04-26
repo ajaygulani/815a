@@ -71,20 +71,20 @@ Resources:
             mkdir -p /home/$CODE_SERVER_USER/.local/share/code-server/User
 
             printf '{
-            "files.exclude": {
-              "**/.git": true,
-              "**/.github": true,
-              "**/.terraform": true,
-              "**/.cache": true,
-              "**/.local": true,
-              "**/.ssh": true,
-              "**/.config": true,
-              "**/.bash_logout": true,
-              "**/.bash_profile": true,
-              "**/.bashrc": true
+              "files.exclude": {
+                "**/.git": true,
+                "**/.github": true,
+                "**/.terraform": true,
+                "**/.cache": true,
+                "**/.local": true,
+                "**/.ssh": true,
+                "**/.config": true,
+                "**/.bash_logout": true,
+                "**/.bash_profile": true,
+                "**/.bashrc": true
+              }
             }
-          }
-' > "/home/$CODE_SERVER_USER/.local/share/code-server/User/settings.json"
+            ' > "/home/$CODE_SERVER_USER/.local/share/code-server/User/settings.json"
 
             chown "$CODE_SERVER_USER:$CODE_SERVER_USER" "/home/$CODE_SERVER_USER/.local/share/code-server/User/settings.json"
             chmod 600 "/home/$CODE_SERVER_USER/.local/share/code-server/User/settings.json"
