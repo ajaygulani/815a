@@ -39,96 +39,84 @@ Resources:
       UserData:
         Fn::Base64:
           !Sub |
-          #!/bin/bash
-          set -euxo pipefail
+            #!/bin/bash
+            set -euxo pipefail
 
-          exec > >(tee /var/log/user-data.log | logger -t user-data -s 2>/dev/console) 2>&1
+            exec > >(tee /var/log/user-data.log | logger -t user-data -s 2>/dev/console) 2>&1
 
-          export HOME=/root
+            export HOME=/root
 
-          CODE_SERVER_USER="ec2-user"
-          CODE_SERVER_PASSWORD="${CodeServerPassword}"
-          CODE_SERVER_PORT="8080"
-          PROJECT_DIR="/home/ec2-user/terraform"
-          SERVICE_DIR="/etc/systemd/system/code-server@${!CODE_SERVER_USER}.service.d"
-          OVERRIDE_FILE="${!SERVICE_DIR}/override.conf"
-          STORAGE_FILE="/home/${!CODE_SERVER_USER}/.local/share/code-server/User/globalStorage/storage.json"
+            CODE_SERVER_USER="ec2-user"
+            CODE_SERVER_PASSWORD="${CodeServerPassword}"
+            CODE_SERVER_PORT="8080"
+            PROJECT_DIR="/home/ec2-user/terraform"
+            SERVICE_DIR="/etc/systemd/system/code-server@$CODE_SERVER_USER.service.d"
+            STORAGE_FILE="/home/$CODE_SERVER_USER/.local/share/code-server/User/globalStorage/storage.json"
 
+            dnf update -y
 
-          dnf update -y
+            curl -fsSL https://code-server.dev/install.sh -o /tmp/code-server-install.sh
+            chmod +x /tmp/code-server-install.sh
+            /bin/sh /tmp/code-server-install.sh
 
-          curl -fsSL https://code-server.dev/install.sh -o /tmp/code-server-install.sh
-          chmod +x /tmp/code-server-install.sh
-          /bin/sh /tmp/code-server-install.sh
+            install -d -m 700 -o "$CODE_SERVER_USER" -g "$CODE_SERVER_USER" "/home/$CODE_SERVER_USER/.config/code-server"
 
-          install -d -m 700 -o "${!CODE_SERVER_USER}" -g "${!CODE_SERVER_USER}" "/home/${!CODE_SERVER_USER}/.config/code-server"
+            printf 'bind-addr: 0.0.0.0:%s\nauth: password\npassword: %s\ncert: false\n' \
+              "$CODE_SERVER_PORT" "$CODE_SERVER_PASSWORD" \
+              > "/home/$CODE_SERVER_USER/.config/code-server/config.yaml"
 
-          cat > "/home/${!CODE_SERVER_USER}/.config/code-server/config.yaml" <<EOF
-          bind-addr: 0.0.0.0:${!CODE_SERVER_PORT}
-          auth: password
-          password: ${!CODE_SERVER_PASSWORD}
-          cert: false
-          EOF
+            chown "$CODE_SERVER_USER:$CODE_SERVER_USER" "/home/$CODE_SERVER_USER/.config/code-server/config.yaml"
+            chmod 600 "/home/$CODE_SERVER_USER/.config/code-server/config.yaml"
 
-          chown "${!CODE_SERVER_USER}:${!CODE_SERVER_USER}" "/home/${!CODE_SERVER_USER}/.config/code-server/config.yaml"
-          chmod 600 "/home/${!CODE_SERVER_USER}/.config/code-server/config.yaml"
-          
-          mkdir -p /home/${!CODE_SERVER_USER}/.local/share/code-server/User
+            mkdir -p /home/$CODE_SERVER_USER/.local/share/code-server/User
 
-          cat > "/home/${!CODE_SERVER_USER}/.local/share/code-server/User/settings.json" <<EOF
-          {
-            "files.exclude": {
-              "**/.git": true,
-              "**/.github": true,
-              "**/.terraform": true,
-              "**/.cache": true,
-              "**/.local": true,
-              "**/.ssh": true,
-              "**/.cache": true,
-              "**/.config": true,
-              "**/.bash_logout": true,
-              "**/.bash_profile": true,
-              "**/.bashrc": true
-            }
-          }
-          EOF
-          
-          chown "${!CODE_SERVER_USER}:${!CODE_SERVER_USER}" "/home/${!CODE_SERVER_USER}/.local/share/code-server/User/settings.json"
-          chmod 600 "/home/${!CODE_SERVER_USER}/.local/share/code-server/User/settings.json"
-          systemctl enable --now "code-server@${!CODE_SERVER_USER}"
+            printf '{
+  "files.exclude": {
+    "**/.git": true,
+    "**/.github": true,
+    "**/.terraform": true,
+    "**/.cache": true,
+    "**/.local": true,
+    "**/.ssh": true,
+    "**/.config": true,
+    "**/.bash_logout": true,
+    "**/.bash_profile": true,
+    "**/.bashrc": true
+  }
+}
+' > "/home/$CODE_SERVER_USER/.local/share/code-server/User/settings.json"
 
+            chown "$CODE_SERVER_USER:$CODE_SERVER_USER" "/home/$CODE_SERVER_USER/.local/share/code-server/User/settings.json"
+            chmod 600 "/home/$CODE_SERVER_USER/.local/share/code-server/User/settings.json"
 
-          echo "==== code-server status ===="
-          systemctl --no-pager --full status "code-server@${!CODE_SERVER_USER}" || true
+            systemctl enable --now "code-server@$CODE_SERVER_USER"
 
+            echo "==== code-server status ===="
+            systemctl --no-pager --full status "code-server@$CODE_SERVER_USER" || true
 
-          echo "==== listening ports ===="
-          ss -ltnp || true
+            echo "==== listening ports ===="
+            ss -ltnp || true
 
+            echo "==== local tests ===="
+            curl -I http://127.0.0.1:8080 || true
 
-          echo "==== local tests ===="
-          curl -I http://127.0.0.1:8080 || true
-          curl -I http://127.0.0.1 || true
+            echo "====== install git ====="
+            dnf install git -y
 
-          echo "====== install git ====="
-          sudo dnf install git -y
+            echo "==== install IDE extensions ==="
+            install -d -m 755 -o $CODE_SERVER_USER -g $CODE_SERVER_USER /home/$CODE_SERVER_USER/.local
+            install -d -m 755 -o $CODE_SERVER_USER -g $CODE_SERVER_USER /home/$CODE_SERVER_USER/.local/share
+            install -d -m 755 -o $CODE_SERVER_USER -g $CODE_SERVER_USER /home/$CODE_SERVER_USER/.local/share/code-server
+            sudo -u $CODE_SERVER_USER code-server --install-extension amazonwebservices.aws-toolkit-vscode
+            sudo -u $CODE_SERVER_USER code-server --install-extension hashicorp.terraform
 
-          echo "==== install IDE extensions ==="
-          sudo systemctl restart code-server@${!CODE_SERVER_USER}
-          install -d -m 755 -o ${!CODE_SERVER_USER} -g ${!CODE_SERVER_USER} /home/${!CODE_SERVER_USER}/.local
-          install -d -m 755 -o ${!CODE_SERVER_USER} -g ${!CODE_SERVER_USER} /home/${!CODE_SERVER_USER}/.local/share
-          install -d -m 755 -o ${!CODE_SERVER_USER} -g ${!CODE_SERVER_USER} /home/${!CODE_SERVER_USER}/.local/share/code-server
-          sudo -u ${!CODE_SERVER_USER} code-server --install-extension amazonwebservices.aws-toolkit-vscode
-          sudo -u ${!CODE_SERVER_USER} code-server --install-extension hashicorp.terraform
+            sudo mkdir -p "$SERVICE_DIR"
 
-          # Create directory if it doesn't exist
-          sudo mkdir -p "${!SERVICE_DIR}"
+            echo "=====Reload systemd and restart service====="
+            systemctl daemon-reload
+            systemctl restart code-server@$CODE_SERVER_USER
 
-          echo "=====Reload systemd and restart service====="
-          sudo systemctl daemon-reload
-          sudo systemctl restart code-server@${!CODE_SERVER_USER}
-
-          echo "code-server now starts in: $PROJECT_DIR"
+            echo "code-server now starts in: $PROJECT_DIR"
 
       Tags:
         - Key: Name
